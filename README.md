@@ -1,1 +1,1 @@
-# mule4-db-postgresql
+# mule4-postgresql
