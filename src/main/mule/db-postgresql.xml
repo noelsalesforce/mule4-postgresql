@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:salesforce="http://www.mulesoft.org/schema/mule/salesforce"
+	xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/salesforce http://www.mulesoft.org/schema/mule/salesforce/current/mule-salesforce.xsd
+http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="9959411b-b608-4a44-a746-2c1d3db47547" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<salesforce:sfdc-config name="Salesforce_Config" doc:name="Salesforce Config" doc:id="36138324-7566-41f6-946c-fdf486c8eb84" >
+		<salesforce:basic-connection username="${sfdc.username}" password="${sfdc.password}" />
+	</salesforce:sfdc-config>
+	<configuration-properties doc:name="Configuration properties" doc:id="4db47768-1598-4045-b71a-ae3d7f87e97c" file="credentials.properties" />
+	<db:config name="Database_Config" doc:name="Database Config" doc:id="96c8dbd3-4cca-4a65-9b4f-eaecc7a66add" >
+		<db:generic-connection url="${postgresql.url}" driverClassName="org.postgresql.Driver" user="${postgresql.user}" password="${postgresql.password}"/>
+	</db:config>
+	<flow name="Flow" doc:id="15769393-8a75-4bb3-b9f2-8bf50ac46a4e" >
+		<http:listener doc:name="Listener" doc:id="aacdbfbe-c1a1-40a7-a8c4-e4a5f4ba8fe9" config-ref="HTTP_Listener_config" path="/insertCustomers"/>
+		<salesforce:query doc:name="Query All Contacts" doc:id="c282351d-cc29-4ba2-8506-7873f028f59d" config-ref="Salesforce_Config">
+			<salesforce:salesforce-query ><![CDATA[SELECT Id, FirstName, LastName, Email, Phone, AccountId, MailingStreet, MailingCity, MailingPostalCode, MailingState FROM Contact
+]]></salesforce:salesforce-query>
+		</salesforce:query>
+		<ee:transform doc:name="Transform Message" doc:id="5dc8720c-d45c-4409-83ae-5155a52cbec5" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload map ((item, index) -> {
+	street_address: item.MailingStreet,
+	city: item.MailingCity,
+	last_name: item.LastName,
+	phone_number: item.Phone,
+	state: item.MailingState,
+	first_name: item.FirstName,
+	email: item.Email,
+	zip_code: item.MailingPostalCode
+})]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<db:bulk-insert doc:name="PostgreSQL" doc:id="a255a8a9-711e-45e7-8e3a-19966f0e2d7b" config-ref="Database_Config">
+			<db:sql ><![CDATA[INSERT INTO customers (first_name, last_name, email, phone_number, street_address, city, state, zip_code)
+VALUES
+    (:first_name, :last_name, :email, :phone_number, :street_address, :city, :state, :zip_code)]]></db:sql>
+		</db:bulk-insert>
+		<ee:transform doc:name="Transform Message" doc:id="a5adff5c-c2d2-4764-a989-d823ecd9094f" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="Flow-Query" doc:id="e9e68592-790a-4f26-92ea-41d95b33cac2" >
+		<http:listener doc:name="Listener" doc:id="65d7858b-5887-4f13-b2de-b9e7c801f904" config-ref="HTTP_Listener_config" path="/query"/>
+		<db:select doc:name="Query customers" doc:id="c372ebd7-4f31-41e6-a7dd-c875004a637f" config-ref="Database_Config">
+			<db:sql ><![CDATA[SELECT * from customers]]></db:sql>
+		</db:select>
+		<ee:transform doc:name="Transform Message" doc:id="389faa0a-1eb8-469b-9098-0bf2d295c244" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="Flow-CreateTable" doc:id="849aebdb-3a87-4b98-aa6e-3c55ffaeb30a" >
+		<http:listener doc:name="Listener" doc:id="507610e1-9a9b-41da-9558-840344779d41" config-ref="HTTP_Listener_config" path="/create"/>
+		<db:execute-script doc:name="Create a table" doc:id="9b4473c0-9971-475c-8598-60d494f925ca" config-ref="Database_Config">
+			<db:sql ><![CDATA[CREATE TABLE customers (
+    customer_id SERIAL PRIMARY KEY,
+    first_name VARCHAR(50),
+    last_name VARCHAR(50),
+    email VARCHAR(100),
+    phone_number VARCHAR(15),
+    street_address VARCHAR(100),
+    city VARCHAR(50),
+    state VARCHAR(50),
+    zip_code VARCHAR(10),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+]]></db:sql>
+		</db:execute-script>
+		<ee:transform doc:name="Transform Message" doc:id="8c163ca7-a5ca-41ed-bd29-8066dec8aa54" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="Flow-DeleteTable" doc:id="c85f538d-eddc-404c-9956-dade0a9e8543">
+		<http:listener doc:name="Listener" doc:id="56f344ec-5dd4-4ac0-a6da-6b18db9e378f" config-ref="HTTP_Listener_config" path="/delete" />
+		<db:execute-script doc:name="Delete table" doc:id="be747fef-378b-4a86-91f1-541c355b82a7" config-ref="Database_Config">
+			<db:sql><![CDATA[DROP TABLE public.customers;
+]]></db:sql>
+		</db:execute-script>
+		<ee:transform doc:name="Transform Message" doc:id="45082fe0-639b-424d-83a8-0d499b2f2beb">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="Flow-Insert" doc:id="6bb285c2-7c12-4c99-a916-5b67962d4b82" >
+		<http:listener doc:name="Listener" doc:id="61eb84dd-f9f0-4405-8b25-82ff381099c4" config-ref="HTTP_Listener_config" path="/insert"/>
+		<db:insert doc:name="Insert 15 customer records" doc:id="0e8f0ba6-0894-4234-b184-5ca2c0064a32" config-ref="Database_Config">
+			<db:sql ><![CDATA[INSERT INTO customers (first_name, last_name, email, phone_number, street_address, city, state, zip_code)
+VALUES
+    ('John', 'Doe', 'john.doe@example.com', '123-456-7890', '123 Elm St', 'Springfield', 'IL', '62701'),
+    ('Jane', 'Smith', 'jane.smith@example.com', '234-567-8901', '456 Oak St', 'Springfield', 'IL', '62701'),
+    ('Emily', 'Johnson', 'emily.johnson@example.com', '345-678-9012', '789 Pine St', 'Springfield', 'IL', '62701'),
+    ('Michael', 'Williams', 'michael.williams@example.com', '456-789-0123', '321 Maple St', 'Springfield', 'IL', '62701'),
+    ('Sarah', 'Brown', 'sarah.brown@example.com', '567-890-1234', '654 Cedar St', 'Springfield', 'IL', '62701'),
+    ('David', 'Jones', 'david.jones@example.com', '678-901-2345', '987 Birch St', 'Springfield', 'IL', '62701'),
+    ('Laura', 'Garcia', 'laura.garcia@example.com', '789-012-3456', '159 Walnut St', 'Springfield', 'IL', '62701'),
+    ('Daniel', 'Martinez', 'daniel.martinez@example.com', '890-123-4567', '753 Chestnut St', 'Springfield', 'IL', '62701'),
+    ('Olivia', 'Hernandez', 'olivia.hernandez@example.com', '901-234-5678', '852 Fir St', 'Springfield', 'IL', '62701'),
+    ('James', 'Lopez', 'james.lopez@example.com', '012-345-6789', '963 Spruce St', 'Springfield', 'IL', '62701'),
+    ('Sophia', 'Wilson', 'sophia.wilson@example.com', '123-456-7891', '147 Redwood St','Springfield','IL','62701'),
+    ('William','Anderson','william.anderson@example.com','234-567-8902','258 Palm St','Springfield','IL','62701'),
+    ('Mia','Thomas','mia.thomas@example.com','345-678-9013','369 Cypress St','Springfield','IL','62701'),
+    ('Benjamin','Taylor','benjamin.taylor@example.com','456-789-0124','741 Willow St','Springfield','IL','62701'),
+    ('Ava','Moore','ava.moore@example.com','567-890-1235','852 Ash St','Springfield','IL','62701');
+]]></db:sql>
+		</db:insert>
+		<ee:transform doc:name="Transform Message" doc:id="abd2f9e7-57e5-4f5b-8cdb-b0df164107d7">
+			<ee:message>
+				<ee:set-payload><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+</mule>
