@@ -1,4 +1,4 @@
-# mule4-postgresql
+# mule4-salesforce-postgresql
 
 ### Salesforce > PostgreSQL
 - Flow: Simple flow that that retrieves all Salesforce Contact records and inserts them into the customers table in PostgreSQL
